@@ -39,3 +39,34 @@ class VGAE(pyg.nn.VGAE):
         loss.backward()
         optimizer.step()
         return float(loss)
+    
+    
+    def test_step(self, x, train_pos, test_pos, test_neg):
+        self.eval()
+        with torch.no_grad():
+            z = self.encode(x, train_pos)
+            auc, ap = self.test(z, test_pos, test_neg)
+            print(f'AUC: {auc:.4f} | AP: {ap:.4f}')
+            
+    
+    def train_cycle(self, x, train_pos, test_pos, test_neg, epochs = 500, optimizer = None):
+        if optimizer is None:
+            optimizer = torch.optim.Adam(self.parameters(),lr=1e-2)
+        lossi = []
+        for i in range(epochs):
+            lossi.append(self.train_step(optimizer, x, train_pos))
+            if i%(epochs/20) == 0:
+                print(f'{i/epochs*100:.2f}% | loss = {lossi[i]:.4f} -> ', end = '')
+                self.test_step(x, train_pos, test_pos, test_neg)
+
+        print(f'100.00% | loss = {lossi[i]:.4f} -> ', end = '')
+        self.test_step(x, train_pos, test_pos, test_neg)
+        return lossi
+        
+        
+        
+        
+        
+        
+        
+        

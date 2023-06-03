@@ -42,49 +42,22 @@ in_channels = data.x.shape[1]
 hid_dim = 32
 emb_dim = 16
 lr = 1e-2
-#model = pyg.nn.VGAE(models.GCNEncoder(in_channels, hid_dim, emb_dim)).to(device)
 model = models.VGAE(in_channels, hid_dim, emb_dim)
-optimizer = torch.optim.Adam(model.parameters(), lr = lr)
 
 
 #%%
 #Training
 epochs = 500
 norm = 1/data.x.shape[0]
-lossi = []
 
-for i in range(epochs):
-    lossi.append(model.train_step(optimizer, data.x, train_pos))
-    # model.train()
-    # optimizer.zero_grad()
-    # z = model.encode(data.x,train_pos)
-    # loss = model.recon_loss(z,train_pos) + model.kl_loss()*norm
-    # lossi.append(loss.item())
-    # loss.backward()
-    # optimizer.step()
-    if i%(epochs/20) == 0:
-        model.eval()
-        with torch.no_grad():
-            z = model.encode(data.x,train_pos)
-            auc, ap = model.test(z, test_pos, test_neg)
-            print(f'{i/epochs*100:.2f}% | loss = {lossi[i]:.4f} -> ', end = '')
-            print(f'AUC: {auc:.4f} | AP: {ap:.4f}')
+lossi = model.train_cycle(data.x, train_pos, test_pos, test_neg)
 
-# with torch.no_grad():
-#     z = model.encode(data.x,train_pos)
-#     auc, ap = model.test(z, test_pos, test_neg)
-# print(f'100.00% | loss = {loss:.4f} -> ', end = '')
-# print(f'AUC: {auc:.4f} | AP: {ap:.4f}')
-
+    
 #%%
 #Plots
 
-
-torch.manual_seed(10)
-
-#plots.plot_loss(lossi)
-
-#plots.plot_train_distribution(model, data.x, train_pos)
+plots.plot_loss(lossi)
+plots.plot_train_distribution(model, data.x, train_pos)
 plots.plot_test_distribution(model, data.x, train_pos, test_pos, test_neg)
 
 
