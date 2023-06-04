@@ -8,7 +8,6 @@ import os
 import torch_geometric as pyg
 from torch_geometric.datasets import Planetoid
 import torch
-from torch_geometric.utils import train_test_split_edges, negative_sampling
 import models
 import plots
 import matplotlib.pyplot as plt
@@ -30,14 +29,7 @@ data = dataset[0].to(device)
 torch.manual_seed(0)
 
 #Data preprocessing
-all_index = data.edge_index
-data = train_test_split_edges(data, 0.05, 0.1)
-train_pos = data.train_pos_edge_index
-train_neg = negative_sampling(all_index, num_nodes= data.x.shape[0], num_neg_samples=train_pos.shape[1])
-val_pos = data.val_pos_edge_index
-val_neg = data.val_neg_edge_index
-test_pos = data.test_pos_edge_index
-test_neg = data.test_neg_edge_index
+data = models.DataProcessing(data)
 
 
 #%%
@@ -51,25 +43,25 @@ autoencoder = models.VGAE(in_channels, hid_dim, emb_dim)
 
 #%%
 #Training
-lossi = autoencoder.train_cycle(data.x, train_pos, test_pos, test_neg)
+lossi = autoencoder.train_cycle(data)
 
     
 #%%
 #Plots
 
 plots.plot_loss(lossi)
-plots.plot_train_distribution(autoencoder, data.x, train_pos)
-plots.plot_test_distribution(autoencoder, data.x, train_pos, test_pos, test_neg)
+plots.plot_train_distribution(autoencoder, data.x, data.train_pos)
+plots.plot_test_distribution(autoencoder, data.x, data.train_pos, data.test_pos, data.test_neg)
 
 
 #%%
 #Data processing for the FFNN
-embedding = autoencoder(data.x, train_pos)[0].detach() #[0] -> To get only z and not logvar
+embedding = autoencoder(data.x, data.train_pos)[0].detach() #[0] -> To get only z and not logvar
 
-train_emb = models.get_ffnn_input(embedding, train_pos)
-neg = models.get_ffnn_input(embedding, train_neg)
-test_emb_pos = models.get_ffnn_input(embedding, test_pos)
-test_emb_neg = models.get_ffnn_input(embedding, test_neg)
+train_emb = models.get_ffnn_input(embedding, data.train_pos)
+neg = models.get_ffnn_input(embedding, data.train_neg)
+test_emb_pos = models.get_ffnn_input(embedding, data.test_pos)
+test_emb_neg = models.get_ffnn_input(embedding, data.test_neg)
 
 
 #%%
@@ -104,7 +96,7 @@ for i, ind in enumerate(index):
     lossi.append(loss.item())
 
 print(loss.item())
-plots.plot_loss(lossi, 500)
+plots.plot_loss(lossi, 200)
 
 with torch.no_grad():
     one = torch.ones(test_emb_pos.shape[0], dtype=torch.long).to(device)
@@ -116,7 +108,7 @@ with torch.no_grad():
 
 
 #%%
-link = val_pos
+link = data.val_pos
 inp = models.get_ffnn_input(embedding, link)
 
 h = torch.nn.functional.softmax(ffnn(inp), dim = 1)
