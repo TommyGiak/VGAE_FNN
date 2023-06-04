@@ -32,17 +32,27 @@ class VGAE(pyg.nn.VGAE):
         super().__init__(encoder=GCNEncoder(in_channels, hid_dim, emb_dim))
     
         
-    def train_step(self, x, edges, optimizer = None):
+    def train_step(self, x, edges, train_neg = None, optimizer = None):
         if optimizer is None:
             optimizer = torch.optim.Adam(self.parameters(),lr=1e-2)
-        norm = 1/x.shape[0]
-        self.train()
-        optimizer.zero_grad()
-        z = self.encode(x,edges)
-        loss = self.recon_loss(z,edges) + self.kl_loss()*norm
-        loss.backward()
-        optimizer.step()
-        return float(loss)
+        if train_neg is None:
+            norm = 1/x.shape[0]
+            self.train()
+            optimizer.zero_grad()
+            z = self.encode(x,edges)
+            loss = self.recon_loss(z,edges) + self.kl_loss()*norm
+            loss.backward()
+            optimizer.step()
+            return float(loss)
+        else:
+            norm = 1/x.shape[0]
+            self.train()
+            optimizer.zero_grad()
+            z = self.encode(x,edges)
+            loss = self.recon_loss(z,edges, train_neg) + self.kl_loss()*norm
+            loss.backward()
+            optimizer.step()
+            return float(loss)
     
     
     def test_step(self, x, train_pos, test_pos, test_neg):
@@ -53,21 +63,30 @@ class VGAE(pyg.nn.VGAE):
             print(f'AUC: {auc:.4f} | AP: {ap:.4f}')
             
     
-    def train_cycle(self, x, train_pos, test_pos, test_neg, epochs = 1000, optimizer = None):
+    def train_cycle(self, x, train_pos, test_pos, test_neg, epochs = 1000, train_neg = None, optimizer = None):
+        lossi = []
         if optimizer is None:
             optimizer = torch.optim.Adam(self.parameters(),lr=1e-2)
-        lossi = []
-        for i in range(epochs):
-            lossi.append(self.train_step(x, train_pos, optimizer))
-            if i%(epochs/20) == 0:
-                print(f'{i/epochs*100:.2f}% | loss = {lossi[i]:.4f} -> ', end = '')
-                self.test_step(x, train_pos, test_pos, test_neg)
-
-        print(f'100.00% | loss = {lossi[i]:.4f} -> ', end = '')
-        self.test_step(x, train_pos, test_pos, test_neg)
-        return lossi
-        
-        
+        if train_neg is None: 
+            for i in range(epochs):
+                lossi.append(self.train_step(x, train_pos, optimizer=optimizer))
+                if i%(epochs/20) == 0:
+                    print(f'{i/epochs*100:.2f}% | loss = {lossi[i]:.4f} -> ', end = '')
+                    self.test_step(x, train_pos, test_pos, test_neg)
+    
+            print(f'100.00% | loss = {lossi[i]:.4f} -> ', end = '')
+            self.test_step(x, train_pos, test_pos, test_neg)
+            return lossi
+        else:
+            for i in range(epochs):
+                lossi.append(self.train_step(x, train_pos,train_neg, optimizer))
+                if i%(epochs/20) == 0:
+                    print(f'{i/epochs*100:.2f}% | loss = {lossi[i]:.4f} -> ', end = '')
+                    self.test_step(x, train_pos, test_pos, test_neg)
+    
+            print(f'100.00% | loss = {lossi[i]:.4f} -> ', end = '')
+            self.test_step(x, train_pos, test_pos, test_neg)
+            return lossi
 
 class  FFNN(nn.Module):
     

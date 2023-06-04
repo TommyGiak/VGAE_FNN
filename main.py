@@ -8,11 +8,11 @@ import os
 import torch_geometric as pyg
 from torch_geometric.datasets import Planetoid
 import torch
-from torch_geometric.utils import train_test_split_edges
+from torch_geometric.utils import train_test_split_edges, negative_sampling
 import models
 import plots
+import matplotlib.pyplot as plt
 import numpy as np
-
 
 
 #Define device, if gpu is available il will be used
@@ -30,8 +30,10 @@ data = dataset[0].to(device)
 torch.manual_seed(0)
 
 #Data preprocessing
+all_index = data.edge_index
 data = train_test_split_edges(data, 0.05, 0.1)
 train_pos = data.train_pos_edge_index
+train_neg = negative_sampling(all_index, num_nodes= data.x.shape[0], num_neg_samples=train_pos.shape[1])
 val_pos = data.val_pos_edge_index
 val_neg = data.val_neg_edge_index
 test_pos = data.test_pos_edge_index
@@ -65,45 +67,44 @@ plots.plot_test_distribution(autoencoder, data.x, train_pos, test_pos, test_neg)
 embedding = autoencoder(data.x, train_pos)[0].detach() #[0] -> To get only z and not logvar
 
 train_emb = models.get_ffnn_input(embedding, train_pos)
+neg = models.get_ffnn_input(embedding, train_neg)
 test_emb_pos = models.get_ffnn_input(embedding, test_pos)
 test_emb_neg = models.get_ffnn_input(embedding, test_neg)
-
-train_emb_neg = test_emb_neg
-
 
 
 #%%
 #FFNN
-
 ffnn = models.FFNN(emb_dim*2).to(device)
 
-epochs = 200
+
+#%%
+#FFNN training
+epochs = 10000
 batch_size = 128
 optim = torch.optim.Adam(ffnn.parameters(),lr = 1e-3)
-ffnn.train()
 loss_fn = torch.nn.CrossEntropyLoss()
 index = np.random.randint(0, train_emb.shape[0]-batch_size, epochs)
 
+lossi = []
+
+
+#%%
 one = torch.ones(batch_size, dtype=torch.long).to(device)
 zero = torch.zeros(batch_size, dtype=torch.long).to(device)
 
-lossi = []
-
+ffnn.train()
 for i, ind in enumerate(index):
     optim.zero_grad()
 
-    # neg = pyg.utils.negative_sampling(train_pos, data.x.shape[0], batch_size)
-    # neg = models.get_ffnn_input(embedding, neg)
-
     out_pos = ffnn(train_emb[ind:ind+batch_size])
-    #out_neg = ffnn(neg)
-    loss = loss_fn(out_pos, one) #+ loss_fn(out_neg, zero)
+    out_neg = ffnn(neg[ind:ind+batch_size])
+    loss = loss_fn(out_pos, one) + loss_fn(out_neg, zero)
     loss.backward()
     optim.step()
     lossi.append(loss.item())
 
 print(loss.item())
-plots.plot_loss(lossi, 100)
+plots.plot_loss(lossi, 500)
 
 with torch.no_grad():
     one = torch.ones(test_emb_pos.shape[0], dtype=torch.long).to(device)
@@ -115,9 +116,19 @@ with torch.no_grad():
 
 
 #%%
-link = test_pos.T[0:2]
+link = val_pos
 inp = models.get_ffnn_input(embedding, link)
 
-torch.nn.functional.softmax(ffnn(inp[1]), dim = 0)
+h = torch.nn.functional.softmax(ffnn(inp), dim = 1)
+x = h.detach().cpu().numpy()[:,0]
+y = h.detach().cpu().numpy()[:,1]
+
+fig, ax  = plt.subplots()
+ax.hist(x, bins=30)
+
+
+#%%
+
+
 
 
