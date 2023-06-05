@@ -71,43 +71,53 @@ ffnn = models.FFNN(emb_dim*2).to(device)
 
 #%%
 #FFNN training
-epochs = 10000
+epochs = 2000
 batch_size = 128
 optim = torch.optim.Adam(ffnn.parameters(),lr = 1e-3)
 loss_fn = torch.nn.CrossEntropyLoss()
 index = np.random.randint(0, train_emb.shape[0]-batch_size, epochs)
-
 lossi = []
-
+lossi_test = []
 
 #%%
-one = torch.ones(batch_size, dtype=torch.long).to(device)
-zero = torch.zeros(batch_size, dtype=torch.long).to(device)
-
-ffnn.train()
-for i, ind in enumerate(index):
+#Functions for test and train of FFNN
+def train(train_emb, neg, ind, loss_fn):
+    ffnn.train()
+    one = torch.ones(batch_size, dtype=torch.long).to(device)
+    zero = torch.zeros(batch_size, dtype=torch.long).to(device)
     optim.zero_grad()
-
     out_pos = ffnn(train_emb[ind:ind+batch_size])
     out_neg = ffnn(neg[ind:ind+batch_size])
     loss = loss_fn(out_pos, one) + loss_fn(out_neg, zero)
     loss.backward()
     optim.step()
-    lossi.append(loss.item())
+    return loss.item()
 
-print(loss.item())
-plots.plot_loss(lossi, 200)
-
-with torch.no_grad():
-    one = torch.ones(test_emb_pos.shape[0], dtype=torch.long).to(device)
-    zero = torch.zeros(test_emb_neg.shape[0], dtype=torch.long).to(device)
-    out_pos = ffnn(test_emb_pos)
-    out_neg = ffnn(test_emb_neg)
-    loss = loss_fn(out_pos, one) + loss_fn(out_neg, zero)
-    print(loss.item())
+def test(test_emb_pos, test_emb_neg, loss_fn):
+    lossi_test 
+    ffnn.eval()
+    with torch.no_grad():
+        one = torch.ones(test_emb_pos.shape[0], dtype=torch.long).to(device)
+        zero = torch.zeros(test_emb_neg.shape[0], dtype=torch.long).to(device)
+        out_pos = ffnn(test_emb_pos)
+        out_neg = ffnn(test_emb_neg)
+        loss = loss_fn(out_pos, one) + loss_fn(out_neg, zero)
+        return loss.item()
 
 
 #%%
+for i, ind in enumerate(index):
+    lossi.append(train(train_emb, neg, ind, loss_fn))
+    lossi_test.append(test(test_emb_pos, test_emb_neg, loss_fn))
+
+print(lossi[-1], lossi_test[-1])
+
+plots.plot_loss(lossi, 10)
+plots.plot_loss(lossi_test, 10)
+
+
+#%%
+ffnn.eval()
 link = data.val_pos
 inp = models.get_ffnn_input(embedding, link)
 
