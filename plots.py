@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Fri Jun  2 12:00:08 2023
@@ -8,6 +7,7 @@ Created on Fri Jun  2 12:00:08 2023
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from torch import Tensor
 
 class bcolors:
     #Class to print on terminal in different colors
@@ -24,17 +24,15 @@ class bcolors:
 
 def plot_loss(lossi : list, mean = 5) -> None:
     '''
-
+    Plot the loss history in log scale.
+    
     Parameters
     ----------
-    lossi : list
-        DESCRIPTION.
+    lossi : list, ArrayLike
 
     Returns
     -------
-    None
-        DESCRIPTION.
-
+    Show the plot
     '''
     try:
         lossi = np.array(lossi)
@@ -54,7 +52,23 @@ def plot_loss(lossi : list, mean = 5) -> None:
         pass
 
 
-def plot_train_distribution(model, x, edges) -> None:
+def plot_train_distribution_VGAE(model, x : Tensor, edges : Tensor) -> None:
+    '''
+    Plot the distribution of link probability for the given edges, only for the TRAIN set.
+    
+    Parameters
+    ----------
+    model : VGAE (or GAE)
+    x : Tensor
+        Feature tensor NxF, where N is the number of nodes and F the features for each node.
+    edges : Tensor
+        Adjacency matrix in SPARSE format: 2xE, where E is the number of edges.
+
+    Returns
+    -------
+    Show the histogram of the distribution
+    '''
+    model.eval()
     with torch.no_grad():
         z = model.encode(x,edges)
         out = model.decode(z, edges)
@@ -69,8 +83,23 @@ def plot_train_distribution(model, x, edges) -> None:
     pass
 
 
-def plot_test_distribution(model, x, train_pos, test_pos, test_neg = None) -> None:
+def plot_test_distribution_VGAE(model, x : Tensor, train_pos : Tensor, test_pos : Tensor, test_neg : Tensor = None) -> None:
+    '''
+    Plot the distribution of link probability for the given edges, only for the VAL/TEST set.
+    The test negative edges can be included or not.
     
+    Parameters
+    ----------
+    model : VGAE (or GAE)
+    x : Tensor
+        Feature tensor NxF, where N is the number of nodes and F the features for each node.
+    edges : Tensor
+        Adjacency matrix in SPARSE format: 2xE, where E is the number of edges.
+
+    Returns
+    -------
+    Show the histogram of the distribution
+    '''
     with torch.no_grad():
         z = model.encode(x,train_pos)
         pos_out = model.decode(z, test_pos)

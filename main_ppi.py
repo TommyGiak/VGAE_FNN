@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jun  6 10:39:16 2023
 
-@author: tommygiak
+@author: Tommaso Giacometti
 """
 
 import numpy as np
@@ -72,8 +71,8 @@ lossi = autoencoder.train_cycle(data, epochs=2000)
 #Plots
 
 plots.plot_loss(lossi)
-plots.plot_train_distribution(autoencoder, data.x, data.train_pos)
-plots.plot_test_distribution(autoencoder, data.x, data.train_pos, data.test_pos, data.test_neg)
+plots.plot_train_distribution_VGAE(autoencoder, data.x, data.train_pos)
+plots.plot_test_distribution_VGAE(autoencoder, data.x, data.train_pos, data.test_pos, data.test_neg)
 
 
 #%%

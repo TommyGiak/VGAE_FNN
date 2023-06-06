@@ -49,8 +49,8 @@ lossi = autoencoder.train_cycle(data)
 #Plots
 
 plots.plot_loss(lossi)
-plots.plot_train_distribution(autoencoder, data.x, data.train_pos)
-plots.plot_test_distribution(autoencoder, data.x, data.train_pos, data.test_pos, data.test_neg)
+plots.plot_train_distribution_VGAE(autoencoder, data.x, data.train_pos)
+plots.plot_test_distribution_VGAE(autoencoder, data.x, data.train_pos, data.test_pos, data.test_neg)
 
 
 #%%
