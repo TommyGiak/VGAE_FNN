@@ -29,6 +29,9 @@ def plot_loss(lossi : list, mean = 5) -> None:
     Parameters
     ----------
     lossi : list, ArrayLike
+    
+    mean : Optional
+        The plot will show the mean of the loss for this number of steps.
 
     Returns
     -------
@@ -100,6 +103,7 @@ def plot_test_distribution_VGAE(model, x : Tensor, train_pos : Tensor, test_pos 
     -------
     Show the histogram of the distribution
     '''
+    model.eval()
     with torch.no_grad():
         z = model.encode(x,train_pos)
         pos_out = model.decode(z, test_pos)
@@ -113,7 +117,6 @@ def plot_test_distribution_VGAE(model, x : Tensor, train_pos : Tensor, test_pos 
         ax.set_ylabel('Number of edges')
         ax.set_title('Positive test edges')
         plt.show()
-        
     else:
         with torch.no_grad():
             neg_out = model.decode(z, test_neg)

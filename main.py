@@ -64,13 +64,13 @@ test_emb_neg = models.get_ffnn_input(embedding, data.test_neg)
 
 
 #%%
-#FFNN
-ffnn = models.FFNN(emb_dim*2).to(device)
+#FNN
+ffnn = models.FNN(emb_dim*2).to(device)
 
 
 #%%
-#FFNN training
-epochs = 10000
+#FNN training
+epochs = 1000
 batch_size = 128
 optim = torch.optim.Adam(ffnn.parameters(),lr = 1e-3)
 loss_fn = torch.nn.CrossEntropyLoss()
@@ -79,7 +79,7 @@ lossi = []
 lossi_test = []
 
 #%%
-#Functions for test and train of FFNN
+#Functions for test and train of FNN
 def train(train_emb, neg, ind, loss_fn):
     ffnn.train()
     one = torch.ones(batch_size, dtype=torch.long).to(device)

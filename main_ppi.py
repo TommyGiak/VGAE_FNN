@@ -7,7 +7,6 @@ Created on Tue Jun  6 10:39:16 2023
 
 import numpy as np
 import torch
-import torch_geometric as pyg
 import models
 import plots
 import matplotlib.pyplot as plt
@@ -86,12 +85,12 @@ test_emb_neg = models.get_ffnn_input(embedding, data.test_neg)
 
 
 #%%
-#FFNN
-ffnn = models.FFNN(emb_dim*2).to(device)
+#FNN
+ffnn = models.FNN(emb_dim*2).to(device)
 
 
 #%%
-#FFNN training
+#FNN training
 epochs = 1000
 batch_size = 128
 optim = torch.optim.Adam(ffnn.parameters(),lr = 1e-3)
@@ -140,7 +139,7 @@ plots.plot_loss(lossi_test, 10)
 
 #%%
 ffnn.eval()
-link = data.test_neg
+link = data.test_pos
 inp = models.get_ffnn_input(embedding, link)
 
 h = torch.nn.functional.softmax(ffnn(inp), dim = 1)

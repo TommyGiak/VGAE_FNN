@@ -5,12 +5,25 @@ Created on Thu Jun  1 20:21:48 2023
 @author: Tommaso Giacometti
 """
 import torch
+from torch import Tensor
 import torch_geometric as pyg
 from torch import nn
 from torch_geometric.utils import negative_sampling, train_test_split_edges
 
 
 class DataProcessing():
+    '''
+    Class to group the data in a more intuitive way.
+    ONLY for paper's citation datasets (not for bio-data)
+
+    Parameters
+    ----------
+    data : Dataset -> CORA, CiteSeer, PubMed
+
+    Returns
+    -------
+    Data class.
+    '''
     def __init__(self, data):
         self.x = data.x
         self.all_index = data.edge_index
@@ -25,28 +38,72 @@ class DataProcessing():
         self.test_neg = data.test_neg_edge_index
         del self.all_index
         
+        
 
 class GCNEncoder(nn.Module):
-    
+    '''
+    Graph Convolutional Network for the VGAE -> one shared hidden layer and two separated output
+    layers for the embedding variables mu and log_var.
+
+    Parameters
+    ----------
+    in_channels : int
+        Number of features in input: F where F is a dimension of the feature matrix X: NxF.
+        
+    hid_dim : int
+        Dimension of the shared hidden layer.
+        
+    emb_dim : int
+        Output dimension (which is the dimension of the embedding).
+    '''
     def __init__(self, in_channels : int, hid_dim : int, emb_dim : int):
         super().__init__()
-        self.conv = pyg.nn.GCNConv(in_channels, hid_dim)
-        self.mu = pyg.nn.GCNConv(hid_dim, emb_dim)
-        self.logvar = pyg.nn.GCNConv(hid_dim, emb_dim)
+        self.conv = pyg.nn.GCNConv(in_channels, hid_dim, cached=True) #cached -> True for storing the computation of the normalized adj matrix
+        self.mu = pyg.nn.GCNConv(hid_dim, emb_dim, cached=True)
+        self.logvar = pyg.nn.GCNConv(hid_dim, emb_dim, cached=True)
         
         
-    def forward(self, x, edges):
+    def forward(self, x : Tensor, edges : Tensor):
         x = self.conv(x,edges).relu()
         return self.mu(x,edges), self.logvar(x,edges)
     
     
-class VGAE(pyg.nn.VGAE):
     
+class VGAE(pyg.nn.VGAE):
+    '''
+    Variational Graph AutoEncoder which contain the GCNEncoder.
+
+    Parameters
+    ----------
+    in_channels : int
+        Number of features in input: F where F is a dimension of the feature matrix X: NxF.
+        
+    hid_dim : int
+        Dimension of the shared hidden layer.
+        
+    emb_dim : int
+        Output dimension (which is the dimension of the embedding).
+    '''
     def __init__(self, in_channels, hid_dim, emb_dim):
         super().__init__(encoder=GCNEncoder(in_channels, hid_dim, emb_dim))
     
    
-    def train_step(self, data, optimizer):
+    def train_step(self, data, optimizer) -> float:
+        '''
+        Perform a single step of the training of the VGAE.
+
+        Parameters
+        ----------
+        data : Data structure in according with the DataProcessing's class
+            
+        optimizer : torch.optim.* 
+            The choosen optimizer for the training.
+
+        Returns
+        -------
+        loss : float
+            Loss of the training stap.
+        '''
         self.train()
         optimizer.zero_grad()
         norm = 1/data.x.shape[0]
@@ -57,7 +114,19 @@ class VGAE(pyg.nn.VGAE):
         return float(loss)
     
     
-    def test_step(self, data):
+    def test_step(self, data) -> None:
+        '''
+        Perform a test step of the VGAE
+
+        Parameters
+        ----------
+        data : Data structure in according with the DataProcessing's 
+
+        Returns
+        -------
+        None.
+
+        '''
         self.eval()
         with torch.no_grad():
             z = self.encode(data.x, data.train_pos)
@@ -66,7 +135,25 @@ class VGAE(pyg.nn.VGAE):
         pass
  
     
-    def train_cycle(self, data , epochs = 1000, optimizer = None):
+    def train_cycle(self, data , epochs : int = 1000, optimizer = None) -> list:
+        '''
+        Perform a cycle of training using the train_step function.
+
+        Parameters
+        ----------
+        data : Data structure in according with the DataProcessing's 
+            
+        epochs : int, optional
+            Number of epochs. The default is 1000.
+            
+        optimizer : torch.optim.*, optional
+            The choosen optimizer for the training. If None it takes as default Adam with lr=1e-3
+            
+        Returns
+        -------
+        lossi : list
+            List of all the loss steps of the training.
+        '''
         lossi = []
         if optimizer is None:
             optimizer = torch.optim.Adam(self.parameters(),lr=1e-2)
@@ -80,9 +167,18 @@ class VGAE(pyg.nn.VGAE):
         return lossi
 
 
-class  FFNN(nn.Module):
-    
-    def __init__(self, inputs, out = 2):
+class  FNN(nn.Module):
+    '''
+    Feedfarward Neural Network, by default it has always two hidden layers with 128 and 64 neurons.
+
+    Parameters
+    ----------
+    inputs : int
+        Number of inputs (it should be twice the embedding dimension).
+    out : int, optional
+        Number of outputs. The default is 2 (binary classification).
+    '''
+    def __init__(self, inputs : int, out : int = 2):
         super().__init__()
         self.seq = nn.Sequential(nn.Linear(inputs, 128), nn.ReLU(), nn.Dropout(),
                                  nn.Linear(128, 64), nn.ReLU(), nn.Dropout(),
@@ -95,7 +191,24 @@ class  FFNN(nn.Module):
         return logits
         
     
-def get_ffnn_input(embedding, links):
+    
+def get_ffnn_input(embedding : Tensor, links : Tensor) -> Tensor:
+    '''
+    Generate the input for the FNN.
+
+    Parameters
+    ----------
+    embedding : Tensor
+        The embedding of the VGAE of dimension NxD, where N is the number of nodes and D the embedding dimension.
+    links : Tensor (Sparse)
+        Adjacency sparse matrix of the links to transform of dimension 2xL.
+
+    Returns
+    -------
+    Tensor
+        Inputs for the FNN of dimension Lx2D.
+
+    '''
     x = torch.hstack((embedding[0,:],embedding[1,:]))
     for i in links.T:
         row = torch.hstack((embedding[int(i[0]),:], embedding[int(i[1]),:]))
