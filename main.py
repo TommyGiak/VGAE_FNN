@@ -37,8 +37,7 @@ data = models.DataProcessing(data)
 in_channels = data.x.shape[1]
 hid_dim = 100
 emb_dim = 50
-lr = 1e-2
-autoencoder = models.VGAE(in_channels, hid_dim, emb_dim)
+autoencoder = models.VGAE(in_channels, hid_dim, emb_dim).to(device)
 
 
 #%%
@@ -71,7 +70,7 @@ ffnn = models.FFNN(emb_dim*2).to(device)
 
 #%%
 #FFNN training
-epochs = 2000
+epochs = 10000
 batch_size = 128
 optim = torch.optim.Adam(ffnn.parameters(),lr = 1e-3)
 loss_fn = torch.nn.CrossEntropyLoss()

@@ -9,7 +9,6 @@ import torch_geometric as pyg
 from torch import nn
 from torch_geometric.utils import negative_sampling, train_test_split_edges
 
-EPS = 1e-15
 
 class DataProcessing():
     def __init__(self, data):
@@ -52,7 +51,7 @@ class VGAE(pyg.nn.VGAE):
         optimizer.zero_grad()
         norm = 1/data.x.shape[0]
         z = self.encode(data.x, data.train_pos)
-        loss = self.recon_loss(z, data.train_pos) + self.kl_loss()*norm
+        loss = self.recon_loss(z, data.train_pos, data.train_neg) + self.kl_loss()*norm
         loss.backward()
         optimizer.step()
         return float(loss)
@@ -85,9 +84,10 @@ class  FFNN(nn.Module):
     
     def __init__(self, inputs, out = 2):
         super().__init__()
-        self.seq = nn.Sequential(nn.Linear(inputs, 40), nn.ReLU(), nn.Dropout(),
-                                 nn.Linear(40, 20), nn.ReLU(), nn.Dropout(),
-                                 nn.Linear(20, out))
+        self.seq = nn.Sequential(nn.Linear(inputs, 128), nn.ReLU(), nn.Dropout(),
+                                 nn.Linear(128, 64), nn.ReLU(), nn.Dropout(),
+                                 nn.Linear(64, 32), nn.ReLU(), nn.Dropout(),
+                                 nn.Linear(32, out))
         
         
     def forward(self,x):
