@@ -9,8 +9,8 @@ import numpy as np
 import torch
 from torch import Tensor
 
-class bcolors:
-    #Class to print on terminal in different colors
+class Bcolors:
+    #Class to print on terminal with different colors
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKCYAN = '\033[96m'
@@ -43,14 +43,14 @@ def plot_loss(lossi : list, mean = 5) -> None:
         x = np.linspace(1, len(y), num=len(y))
         fig, ax = plt.subplots()
         ax.plot(x,y)
-        ax.set_title(f'mean of {mean} losses steps')
+        ax.set_title(f'Mean of {mean} losses steps')
         ax.set_ylabel('loss')
         ax.set_xlabel(f'epoch/{mean}')
         ax.set_yscale('log')
         plt.show()
         pass
     except:
-        print(f'{bcolors.WARNING}WARNING : {bcolors.ENDC}the shape of lossi is not multiple of {mean}!')
+        print(f'{Bcolors.WARNING}WARNING : {Bcolors.ENDC}the shape of lossi is not multiple of {mean}!')
         print('The loss track plot will not be shown')
         pass
 
