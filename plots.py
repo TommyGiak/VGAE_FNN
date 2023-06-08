@@ -7,7 +7,6 @@ Created on Fri Jun  2 12:00:08 2023
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torch import Tensor
 
 class Bcolors:
     #Class to print on terminal with different colors
@@ -22,7 +21,7 @@ class Bcolors:
     UNDERLINE = '\033[4m'
 
 
-def plot_loss(lossi : list, mean = 5) -> None:
+def plot_loss(lossi : list, mean = 20, tit = None) -> None:
     '''
     Plot the loss history in log scale.
     
@@ -32,6 +31,9 @@ def plot_loss(lossi : list, mean = 5) -> None:
     
     mean : Optional
         The plot will show the mean of the loss for this number of steps.
+        
+    tit : str, optional
+        Title to put on the plot.
 
     Returns
     -------
@@ -43,7 +45,10 @@ def plot_loss(lossi : list, mean = 5) -> None:
         x = np.linspace(1, len(y), num=len(y))
         fig, ax = plt.subplots()
         ax.plot(x,y)
-        ax.set_title(f'Mean of {mean} losses steps')
+        if tit is None:
+            ax.set_title(f'Mean of {mean} losses steps')
+        else:
+            ax.set_title(tit)
         ax.set_ylabel('loss')
         ax.set_xlabel(f'epoch/{mean}')
         ax.set_yscale('log')
@@ -55,17 +60,14 @@ def plot_loss(lossi : list, mean = 5) -> None:
         pass
 
 
-def plot_train_distribution_VGAE(model, x : Tensor, edges : Tensor) -> None:
+def plot_train_distribution_VGAE(model, data) -> None:
     '''
     Plot the distribution of link probability for the given edges, only for the TRAIN set.
     
     Parameters
     ----------
     model : VGAE (or GAE)
-    x : Tensor
-        Feature tensor NxF, where N is the number of nodes and F the features for each node.
-    edges : Tensor
-        Adjacency matrix in SPARSE format: 2xE, where E is the number of edges.
+    data : Data class according to Data_Paper or Data_Bio
 
     Returns
     -------
@@ -73,31 +75,35 @@ def plot_train_distribution_VGAE(model, x : Tensor, edges : Tensor) -> None:
     '''
     model.eval()
     with torch.no_grad():
-        z = model.encode(x,edges)
-        out = model.decode(z, edges)
-        out = out.cpu().numpy()
-    fig, ax = plt.subplots()
-    ax.hist(out, bins = 30, label = f'{edges.shape[1]} total edges')
-    ax.legend()
-    ax.set_xlabel('Probability of link')
-    ax.set_ylabel('Number of edges')
-    ax.set_title('Train edges')
-    plt.show()
+        z = model.encode(data.x, data.train_pos)
+        pos_out = model.decode(z, data.train_pos)
+        pos_out = pos_out.cpu().numpy()
+        neg_out = model.decode(z, data.train_neg)
+        neg_out = neg_out.cpu().numpy()
+    fig, (ax1,ax2) = plt.subplots(1,2, figsize = (9,4))
+    fig.suptitle('VGAE distributions')
+    ax1.hist(pos_out, bins = 30, label = f'{data.test_pos.shape[1]} total edges')
+    ax1.legend()
+    ax1.set_xlabel('Probability of link')
+    ax1.set_ylabel('Number of edges')
+    ax1.set_title('Positive train edges')
+    ax2.hist(neg_out, bins = 30, label = f'{data.test_neg.shape[1]} total edges')
+    ax2.legend()
+    ax2.set_xlabel('Probability of link')
+    ax2.set_title('Negative train edges')
+    plt.show()   
     pass
 
 
-def plot_test_distribution_VGAE(model, x : Tensor, train_pos : Tensor, test_pos : Tensor, test_neg : Tensor = None) -> None:
+def plot_test_distribution_VGAE(model, data) -> None:
     '''
     Plot the distribution of link probability for the given edges, only for the VAL/TEST set.
-    The test negative edges can be included or not.
     
     Parameters
     ----------
     model : VGAE (or GAE)
-    x : Tensor
-        Feature tensor NxF, where N is the number of nodes and F the features for each node.
-    edges : Tensor
-        Adjacency matrix in SPARSE format: 2xE, where E is the number of edges.
+    data : Data class according to Data_Paper or Data_Bio
+
 
     Returns
     -------
@@ -105,33 +111,55 @@ def plot_test_distribution_VGAE(model, x : Tensor, train_pos : Tensor, test_pos 
     '''
     model.eval()
     with torch.no_grad():
-        z = model.encode(x,train_pos)
-        pos_out = model.decode(z, test_pos)
+        z = model.encode(data.x, data.train_pos)
+        pos_out = model.decode(z, data.test_pos)
         pos_out = pos_out.cpu().numpy()
-        
-    if test_neg is None:
-        fig, ax = plt.subplots()
-        ax.hist(pos_out, bins = 30, label = f'{test_pos.shape[1]} total edges')
-        ax.legend()
-        ax.set_xlabel('Probability of link')
-        ax.set_ylabel('Number of edges')
-        ax.set_title('Positive test edges')
-        plt.show()
-    else:
-        with torch.no_grad():
-            neg_out = model.decode(z, test_neg)
-            neg_out = neg_out.cpu().numpy()
-        fig, (ax1,ax2) = plt.subplots(1,2, figsize = (8,4))
-        ax1.hist(pos_out, bins = 30, label = f'{test_pos.shape[1]} total edges')
-        ax1.legend()
-        ax1.set_xlabel('Probability of link')
-        ax1.set_ylabel('Number of edges')
-        ax1.set_title('Positive test edges')
-        ax2.hist(neg_out, bins = 30, label = f'{test_neg.shape[1]} total edges')
-        ax2.legend()
-        ax2.set_xlabel('Probability of link')
-        ax2.set_ylabel('Number of edges')
-        ax2.set_title('Negative test edges')
-        plt.show()   
+        neg_out = model.decode(z, data.test_neg)
+        neg_out = neg_out.cpu().numpy()
+    fig, (ax1,ax2) = plt.subplots(1,2, figsize = (9,4))
+    fig.suptitle('VGAE distributions')
+    ax1.hist(pos_out, bins = 30, label = f'{data.test_pos.shape[1]} total edges')
+    ax1.legend()
+    ax1.set_xlabel('Probability of link')
+    ax1.set_ylabel('Number of edges')
+    ax1.set_title('Positive test edges')
+    ax2.hist(neg_out, bins = 30, label = f'{data.test_neg.shape[1]} total edges')
+    ax2.legend()
+    ax2.set_xlabel('Probability of link')
+    ax2.set_title('Negative test edges')
+    plt.show()   
     pass
+
+
+def plot_train_distribution_FNN(model, embedding, data, test : bool) -> None:
+    model.eval()
+    with torch.no_grad():
+        if test:
+            h_pos = torch.nn.functional.softmax(model(data.test_emb_pos), dim = 1)
+            h_neg = torch.nn.functional.softmax(model(data.test_emb_neg), dim = 1)
+            h_pos = h_pos.detach().cpu().numpy()[:,1]
+            h_neg = h_neg.detach().cpu().numpy()[:,1]
+            tit = 'test'
+        else:
+            h_pos = torch.nn.functional.softmax(model(data.train_emb_pos), dim = 1)
+            h_neg = torch.nn.functional.softmax(model(data.train_emb_neg), dim = 1)
+            h_pos = h_pos.detach().cpu().numpy()[:,1]
+            h_neg = h_neg.detach().cpu().numpy()[:,1]
+            tit = 'train'
+    fig, (ax1,ax2) = plt.subplots(1,2, figsize = (9,4))
+    fig.suptitle('FNN distributions, probability for the link to exist')
+    ax1.hist(h_pos, bins = 30, label = f'{len(h_pos)} total links')
+    ax1.legend()
+    ax1.set_xlabel('Probability of link')
+    ax1.set_ylabel('Number of edges')
+    ax1.set_title(f'Positive {tit} edges')
+    ax2.hist(h_neg, bins = 30, label = f'{len(h_neg)} total links')
+    ax2.legend()
+    ax2.set_xlabel('Probability of link')
+    ax2.set_title(f'Negative {tit} edges')
+    plt.show()   
+    pass
+
+
+
 

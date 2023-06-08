@@ -7,10 +7,14 @@ Created on Thu Jun  1 20:21:48 2023
 import torch
 from torch import Tensor
 import torch_geometric as pyg
+from torch_geometric.datasets import Planetoid
 from torch import nn
 from torch_geometric.utils import negative_sampling, train_test_split_edges
 from plots import Bcolors
+import os
 import numpy as np
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class Data_Papers():
@@ -26,7 +30,14 @@ class Data_Papers():
     -------
     Data class.
     '''
-    def __init__(self, data):
+    def __init__(self):
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        data_dir = current_dir + '/data'
+        
+        norm = pyg.transforms.NormalizeFeatures()
+        dataset = Planetoid(root=data_dir, name='Cora', transform=norm)
+        data = dataset[0].to(device)
+        
         self.x = data.x
         self.all_index = data.edge_index
         data = train_test_split_edges(data, 0.05, 0.1)
@@ -38,17 +49,47 @@ class Data_Papers():
         self.val_neg = data.val_neg_edge_index
         self.test_pos = data.test_pos_edge_index
         self.test_neg = data.test_neg_edge_index
-        del self.all_index
+        del self.all_index, norm, data, dataset
         
     
 class Data_Bio():
-    def __init__(self, features, pos_edges_train, neg_edges_train, pos_edges_test, neg_edges_test):
-        self.x = features
-        self.train_pos = pos_edges_train
-        self.train_neg = neg_edges_train
-        self.test_pos = pos_edges_test
-        self.test_neg = neg_edges_test
+    def __init__(self):
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        data_dir = current_dir + '/data'
 
+        features = np.loadtxt(data_dir + '/features.txt', dtype=np.float32)
+        pos_edges = np.loadtxt(data_dir + '/PositiveEdges.txt', dtype=np.int64)
+        neg_edges = np.loadtxt(data_dir + '/NegativeEdges.txt', dtype=np.int64)
+
+        features = torch.from_numpy(features).to(device)
+        soft = torch.nn.Softmax(dim = 1)
+        self.x = soft(features)
+        del soft, features
+        
+        pos_edges = torch.from_numpy(pos_edges).to(device)
+        neg_edges = torch.from_numpy(neg_edges).to(device)
+
+        idx_pos = torch.randperm(pos_edges.shape[0])
+        idx_neg = torch.randperm(neg_edges.shape[0])
+        pos_edges = pos_edges[idx_pos].t()
+        neg_edges = neg_edges[idx_neg].t()
+
+        ind_pos = int(pos_edges.shape[1]*0.85)
+        ind_neg = int(neg_edges.shape[1]*0.85)
+
+        self.train_pos = pos_edges[:,:ind_pos]
+        self.train_neg = neg_edges[:,:ind_neg]
+        self.test_pos = pos_edges[:,ind_pos:]
+        self.test_neg = neg_edges[:,ind_neg:]
+        del pos_edges, neg_edges, idx_pos, idx_neg, ind_pos, ind_neg
+        
+        
+class Data_FNN():
+    def __init__(self, embedding, data):
+        self.train_emb_pos = get_fnn_input(embedding, data.train_pos)
+        self.train_emb_neg = get_fnn_input(embedding, data.train_neg)
+        self.test_emb_pos = get_fnn_input(embedding, data.test_pos)
+        self.test_emb_neg = get_fnn_input(embedding, data.test_neg)
         
         
 
@@ -229,23 +270,23 @@ class  FNN(nn.Module):
         return loss.item()
         
     
-    def train_cycle_fnn(self, train_pos, train_neg, test_pos, test_neg, batch_size = 128, epochs = 2000, optim = None, loss_fn = None):
+    def train_cycle_fnn(self, data, batch_size = 128, epochs = 2000, optim = None, loss_fn = None):
         if optim is None:
             optim = torch.optim.Adam(self.parameters(), lr = 1e-03)
         if loss_fn is None:
             loss_fn = torch.nn.CrossEntropyLoss()
         lossi = []
         lossi_test = []
-        index_pos = np.random.randint(0, train_pos.shape[0]-batch_size, epochs)
-        index_neg = np.random.randint(0, train_neg.shape[0]-batch_size, epochs)
+        index_pos = np.random.randint(0, data.train_emb_pos.shape[0]-batch_size, epochs)
+        index_neg = np.random.randint(0, data.train_emb_neg.shape[0]-batch_size, epochs)
         for i in range(epochs):
-            lossi.append(self.train_fnn(train_pos[index_pos[i]:index_pos[i]+batch_size], 
-                                        train_neg[index_neg[i]:index_neg[i]+batch_size], 
+            lossi.append(self.train_fnn(data.train_emb_pos[index_pos[i]:index_pos[i]+batch_size], 
+                                        data.train_emb_neg[index_neg[i]:index_neg[i]+batch_size], 
                                         optim, loss_fn))
             if i%(epochs/100) == 0:
-                lossi_test.append(self.test_fnn(test_pos, test_neg))
+                lossi_test.append(self.test_fnn(data.test_emb_pos, data.test_emb_neg))
                 print(f'{i/epochs * 100:.2f}% -> Train loss: {lossi[-1]:.3f} | Test loss: {lossi_test[-1]:.3f}')
-        lossi_test.append(self.test_fnn(test_pos, test_neg))
+        lossi_test.append(self.test_fnn(data.test_emb_pos, data.test_emb_neg))
         print(f'100.00% -> Train loss: {lossi[-1]:.3f} | Test loss: {lossi_test[-1]:.3f}')
         return lossi, lossi_test
     
@@ -307,10 +348,6 @@ def minibatch(tens : Tensor, batch_size : int = 32, shuffle : bool = True) -> Te
         tens = tens[:batches*batch_size]
         tens = tens.view(batches, batch_size, tens.shape[1])
     return tens
-
-
-
-
 
 
 
