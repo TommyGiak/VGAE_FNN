@@ -15,8 +15,8 @@ git clone https://github.com/TommyGiak/VGAE_FNN.git
 - [python](https://www.python.org)
 - [pytorch](https://pytorch.org/get-started/locally/)
 - [torch_geometric](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html#)
-- [matplotlib](https://matplotlib.org/stable/)
-- [numpy](https://numpy.org/install/)
+- [matplotlib](https://matplotlib.org/stable/) (quite common)
+- [numpy](https://numpy.org/install/) (even more common)
 
 ## How to use
 Move into the cloned folder from the terminal and run the main file:
