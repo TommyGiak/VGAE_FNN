@@ -13,7 +13,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.manual_seed(5)
 
 #Dataset selection
-dataset = 'cora'
+dataset = 'bio'
 
 if dataset == 'bio':
     data = models.Data_Bio()
@@ -28,7 +28,7 @@ emb_dim = 50
 autoencoder = models.VGAE(in_channels, hid_dim, emb_dim).to(device)
 
 print(f'{plots.Bcolors.HEADER}Training of the VGAE{plots.Bcolors.ENDC}')
-lossi_VGAE = autoencoder.train_cycle(data, epochs=1000)#Training VGAE
+lossi_VGAE = autoencoder.train_cycle(data, epochs=2000)#Training VGAE
 
 
 #Data processing for the FNN
@@ -53,6 +53,17 @@ plots.plot_test_distribution_VGAE(autoencoder, data)
 #FNN
 plots.plot_loss(lossi_fnn, tit = 'Loss of the FNN')
 
-plots.plot_train_distribution_FNN(fnn, embedding, data_fnn, test = False)
-plots.plot_train_distribution_FNN(fnn, embedding, data_fnn, test = True)
+plots.plot_distribution_FNN(fnn, embedding, data_fnn, test = False)
+plots.plot_distribution_FNN(fnn, embedding, data_fnn, test = True)
+
+
+#%%
+
+vgae_results = models.get_argmax_VGAE(autoencoder, data)
+fnn_results = models.get_argmax_FNN(fnn, data_fnn)
+
+print(vgae_results)
+print(fnn_results)
+
+
 

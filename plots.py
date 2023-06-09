@@ -131,7 +131,7 @@ def plot_test_distribution_VGAE(model, data) -> None:
     pass
 
 
-def plot_train_distribution_FNN(model, embedding, data, test : bool) -> None:
+def plot_distribution_FNN(model, embedding, data, test : bool) -> None:
     model.eval()
     with torch.no_grad():
         if test:

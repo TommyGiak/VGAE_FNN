@@ -270,7 +270,7 @@ class  FNN(nn.Module):
         return loss.item()
         
     
-    def train_cycle_fnn(self, data, batch_size = 128, epochs = 2000, optim = None, loss_fn = None):
+    def train_cycle_fnn(self, data, batch_size = 128, epochs = 10000, optim = None, loss_fn = None):
         if optim is None:
             optim = torch.optim.Adam(self.parameters(), lr = 1e-03)
         if loss_fn is None:
@@ -350,9 +350,62 @@ def minibatch(tens : Tensor, batch_size : int = 32, shuffle : bool = True) -> Te
     return tens
 
 
+def get_argmax_VGAE(model, data):
+    tp = 0
+    fp = 0
+    model.eval()
+    with torch.no_grad():
+        z = model.encode(data.x, data.train_pos)
+        pos_out = model.decode(z, data.test_pos)
+        pos_out = pos_out.cpu().numpy()
+        neg_out = model.decode(z, data.test_neg)
+        neg_out = neg_out.cpu().numpy()
+    for p in pos_out:
+        if p > 0.5:
+            tp += 1
+    for p in neg_out:
+        if p > 0.5:
+            fp += 1
+    tn = len(neg_out) - fp
+    fn = len(pos_out) - tp
+    assert tp + fn == len(pos_out)
+    assert fp + tn == len(neg_out)
+    accuracy = (tp+tn)/(tp+tn+fp+fn)
+    sensitivity = tp/(tp+fn)
+    specificity = tn/(tn+fp)
+    precision = tp/(tp+fp)
+    fscore = 2*precision*sensitivity/(precision+sensitivity)            
+    return accuracy, sensitivity, specificity, precision, fscore
 
 
+def get_argmax_FNN(model, data):
+    model.eval()
+    with torch.no_grad():
+        h_pos = torch.nn.functional.softmax(model(data.test_emb_pos), dim = 1)
+        h_neg = torch.nn.functional.softmax(model(data.test_emb_neg), dim = 1)
+        h_pos = torch.argmax(h_pos, dim = 1)
+        h_neg = torch.argmax(h_neg, dim = 1)
+        h_pos = h_pos.detach().cpu().numpy()
+        h_neg = h_neg.detach().cpu().numpy()
+    tp = np.sum(h_pos)
+    fp = np.sum(h_neg)
+    tn = len(h_neg) - fp
+    fn = len(h_pos) - tp
+    assert tp + fn == len(h_pos)
+    assert fp + tn == len(h_neg)
+    accuracy = (tp+tn)/(tp+tn+fp+fn)
+    sensitivity = tp/(tp+fn)
+    specificity = tn/(tn+fp)
+    precision = tp/(tp+fp)
+    fscore = 2*precision*sensitivity/(precision+sensitivity)            
+    return accuracy, sensitivity, specificity, precision, fscore
+    
         
-        
-        
+    
+    
+    
+    
+    
+    
+    
         
