@@ -56,20 +56,56 @@ class Data_Papers():
         del self.all_index, norm, data, dataset
         
     
-class Data_Bio():
+class Data_Bio_Coli():
     def __init__(self):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
 
-        features = np.loadtxt(data_dir + '/features.txt', dtype=np.float32)
-        pos_edges = np.loadtxt(data_dir + '/PositiveEdges.txt', dtype=np.int64)
-        neg_edges = np.loadtxt(data_dir + '/NegativeEdges.txt', dtype=np.int64)
+        features = np.loadtxt(data_dir + '/Coli_features.txt', dtype=np.float32)
+        pos_edges = np.loadtxt(data_dir + '/Coli_PositiveEdges.txt', dtype=np.int64)
+        neg_edges = np.loadtxt(data_dir + '/Coli_NegativeEdges.txt', dtype=np.int64)
 
         features = torch.from_numpy(features).to(device)
         self.x = column_norm(features)
         # soft = torch.nn.Softmax(dim = 1) # Old (and may wrong) implementation of the normalization
         # self.x = soft(features)
-        # del soft, features
+        # del soft
+        del features
+
+        
+        pos_edges = torch.from_numpy(pos_edges).to(device)
+        neg_edges = torch.from_numpy(neg_edges).to(device)
+
+        idx_pos = torch.randperm(pos_edges.shape[0])
+        idx_neg = torch.randperm(neg_edges.shape[0])
+        pos_edges = pos_edges[idx_pos].t()
+        neg_edges = neg_edges[idx_neg].t()
+
+        ind_pos = int(pos_edges.shape[1]*0.85)
+        ind_neg = int(neg_edges.shape[1]*0.85)
+
+        self.train_pos = pos_edges[:,:ind_pos]
+        self.train_neg = neg_edges[:,:ind_neg]
+        self.test_pos = pos_edges[:,ind_pos:]
+        self.test_neg = neg_edges[:,ind_neg:]
+        del pos_edges, neg_edges, idx_pos, idx_neg, ind_pos, ind_neg
+        
+        
+class Data_Bio_Human():
+    def __init__(self):
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        data_dir = current_dir + '/data'
+
+        features = np.loadtxt(data_dir + '/H_features.txt', dtype=np.float32)
+        pos_edges = np.loadtxt(data_dir + '/H_PositiveEdges.txt', dtype=np.int64)
+        neg_edges = np.loadtxt(data_dir + '/H_NegativeEdges.txt', dtype=np.int64)
+
+        features = torch.from_numpy(features).to(device)
+        self.x = column_norm(features)
+        # soft = torch.nn.Softmax(dim = 1) # Old (and may wrong) implementation of the normalization
+        # self.x = soft(features)
+        # del soft
+        del features
         
         pos_edges = torch.from_numpy(pos_edges).to(device)
         neg_edges = torch.from_numpy(neg_edges).to(device)
@@ -288,7 +324,7 @@ class  FNN(nn.Module):
             lossi.append(self.train_fnn(data.train_emb_pos[index_pos[i]:index_pos[i]+batch_size], 
                                         data.train_emb_neg[index_neg[i]:index_neg[i]+batch_size], 
                                         optim, loss_fn))
-            if i%(epochs/100) == 0:
+            if i%(epochs/50) == 0:
                 lossi_test.append(self.test_fnn(data.test_emb_pos, data.test_emb_neg))
                 print(f'{i/epochs * 100:.2f}% -> Train loss: {lossi[-1]:.3f} | Test loss: {lossi_test[-1]:.3f}')
         lossi_test.append(self.test_fnn(data.test_emb_pos, data.test_emb_neg))
