@@ -23,3 +23,12 @@ Move into the cloned folder from the terminal and run the main file:
 ```shell
 python main.py
 ```
+
+## Best results (up to now)
+I performed a 'long' training in [Google Colab](https://colab.research.google.com) with the GPU runtime using the HPRD (Human Protein Reference Database) dataset, which is also the biggest, for more details on this dataset look at the paper cited above.\
+The training involved 100k epochs for the VGAE (which are not so useful) and 300k epochs for the FNN. The computational time took 495s for the VGAE and 825s for the FNN. According to the parameters used also in the paper i found this results:
+- accuracy: 0.9731
+- sensitivity: 0.9729
+- specificity: 0.9741
+- precision: 0.9918
+- f-score: 0.9822
