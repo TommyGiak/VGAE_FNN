@@ -10,7 +10,7 @@ import plots
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-torch.manual_seed(5)
+torch.manual_seed(0)
 
 #Dataset selection
 dataset = 'bio'
@@ -20,6 +20,7 @@ if dataset == 'bio':
 if dataset == 'cora':
     data = models.Data_Papers()
     
+
 #VGAE
 in_channels = data.x.shape[1]
 hid_dim = 100
@@ -56,9 +57,7 @@ plots.plot_loss(lossi_fnn, tit = 'Loss of the FNN')
 plots.plot_distribution_FNN(fnn, embedding, data_fnn, test = False)
 plots.plot_distribution_FNN(fnn, embedding, data_fnn, test = True)
 
-
-#%%
-
+#Results
 vgae_results = models.get_argmax_VGAE(autoencoder, data)
 fnn_results = models.get_argmax_FNN(fnn, data_fnn)
 

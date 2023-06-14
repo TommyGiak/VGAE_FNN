@@ -14,6 +14,8 @@ from plots import Bcolors
 import os
 import numpy as np
 
+EPS = 1e-15
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -35,10 +37,12 @@ class Data_Papers():
         data_dir = current_dir + '/data'
         
         norm = pyg.transforms.NormalizeFeatures()
-        dataset = Planetoid(root=data_dir, name='Cora', transform=norm)
+        # dataset = Planetoid(root=data_dir, name='Cora', transform=norm) # Old (and may wrong) implementation of the normalization 
+        dataset = Planetoid(root=data_dir, name='Cora')
         data = dataset[0].to(device)
         
-        self.x = data.x
+        # self.x = data.x # Still the old normalization
+        self.x = column_norm(data.x)
         self.all_index = data.edge_index
         data = train_test_split_edges(data, 0.05, 0.1)
         self.train_pos = data.train_pos_edge_index
@@ -62,9 +66,10 @@ class Data_Bio():
         neg_edges = np.loadtxt(data_dir + '/NegativeEdges.txt', dtype=np.int64)
 
         features = torch.from_numpy(features).to(device)
-        soft = torch.nn.Softmax(dim = 1)
-        self.x = soft(features)
-        del soft, features
+        self.x = column_norm(features)
+        # soft = torch.nn.Softmax(dim = 1) # Old (and may wrong) implementation of the normalization
+        # self.x = soft(features)
+        # del soft, features
         
         pos_edges = torch.from_numpy(pos_edges).to(device)
         neg_edges = torch.from_numpy(neg_edges).to(device)
@@ -222,7 +227,7 @@ class VGAE(pyg.nn.VGAE):
 
 class  FNN(nn.Module):
     '''
-    Feedfarward Neural Network, by default it has always two hidden layers with 128 and 64 neurons.
+    Feedfarward Neural Network, by default it has always three hidden layers with 128, 64 and 32 neurons.
 
     Parameters
     ----------
@@ -401,8 +406,12 @@ def get_argmax_FNN(model, data):
     return accuracy, sensitivity, specificity, precision, fscore
     
         
-    
-    
+def column_norm(data : Tensor) -> Tensor:
+    mean = torch.mean(data, 0)
+    var = torch.var(data, dim=0)
+    std = torch.sqrt(var)
+    normal = (data - mean)/(std+EPS)
+    return normal/torch.max(normal)
     
     
     
