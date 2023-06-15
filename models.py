@@ -7,7 +7,7 @@ Created on Thu Jun  1 20:21:48 2023
 import torch
 from torch import Tensor
 import torch_geometric as pyg
-from torch_geometric.datasets import Planetoid
+from torch_geometric.datasets import Planetoid, Twitch
 from torch import nn
 from torch_geometric.utils import negative_sampling, train_test_split_edges
 from plots import Bcolors
@@ -60,15 +60,40 @@ class Data_Papers():
         self.test_neg = data.test_neg_edge_index
         del self.all_index, data, dataset
         
+
+class Data_Twitch():
+    def __init__(self, name : str = 'ES'):
+        current_dir = os.path.dirname(os.path.realpath(__file__))
+        data_dir = current_dir + '/data'
+        
+        # norm = pyg.transforms.NormalizeFeatures()
+        # dataset = Planetoid(root=data_dir, name='Cora', transform=norm) # Old (and may wrong) implementation of the normalization 
+        dataset = Twitch(root=data_dir, name=name)
+        data = dataset[0].to(device)
+                
+        # self.x = data.x # Still the old normalization
+        self.x = column_norm(data.x)
+        self.all_index = data.edge_index
+        data = train_test_split_edges(data, 0.05, 0.1)
+        self.train_pos = data.train_pos_edge_index
+        self.train_neg = negative_sampling(self.all_index,
+                                           num_nodes= data.x.shape[0], 
+                                           num_neg_samples=self.train_pos.shape[1])
+        self.val_pos = data.val_pos_edge_index
+        self.val_neg = data.val_neg_edge_index
+        self.test_pos = data.test_pos_edge_index
+        self.test_neg = data.test_neg_edge_index
+        del self.all_index, data, dataset
+        
     
 class Data_Bio_Coli():
     def __init__(self):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
-
+        breakpoint()
         features = np.load(data_dir + '/Coli_features.npz')['Coli_features'].astype(np.float32)
-        pos_edges = np.loadtxt(data_dir + '/Coli_PositiveEdges.npz')['Coli_PositiveEdges'].astype(np.int64)
-        neg_edges = np.loadtxt(data_dir + '/Coli_NegativeEdges.npz')['Coli_NegativeEdges'].astype(np.int64)
+        pos_edges = np.load(data_dir + '/Coli_PositiveEdges.npz')['Coli_PositiveEdges'].astype(np.int64)
+        neg_edges = np.load(data_dir + '/Coli_NegativeEdges.npz')['Coli_NegativeEdges'].astype(np.int64)
 
         features = torch.from_numpy(features).to(device)
         self.x = column_norm(features)
@@ -100,10 +125,9 @@ class Data_Bio_Human():
     def __init__(self):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
-
-        features = np.load(data_dir + '/H_features.npz')['H_features'].astype(np.float32)
-        pos_edges = np.loadtxt(data_dir + '/H_PositiveEdges.npz')['H_PositiveEdges'].astype(np.int64)
-        neg_edges = np.loadtxt(data_dir + '/H_NegativeEdges.npz')['H_NegativeEdges'].astype(np.int64)
+        features = np.load(data_dir + '/H_features.npz')['features'].astype(np.float32)
+        pos_edges = np.load(data_dir + '/H_PositiveEdges.npz')['H_PositiveEdges'].astype(np.int64)
+        neg_edges = np.load(data_dir + '/H_NegativeEdges.npz')['H_NegativeEdges'].astype(np.int64)
 
         features = torch.from_numpy(features).to(device)
         self.x = column_norm(features)
@@ -357,11 +381,10 @@ def get_fnn_input(embedding : Tensor, links : Tensor) -> Tensor:
         Inputs for the FNN of dimension Lx2D.
 
     '''
-    x = torch.hstack((embedding[0,:],embedding[1,:]))
-    for i in links.T:
-        row = torch.hstack((embedding[int(i[0]),:], embedding[int(i[1]),:]))
-        x = torch.vstack((x,row))
-    return x[1:].requires_grad_(True) #To avoid the first row used to define the dimensions
+    col1 = torch.squeeze(embedding[links.T[:,0:1]])
+    col2 = torch.squeeze(embedding[links.T[:,1:2]])
+    x = torch.hstack((col1,col2))
+    return x.requires_grad_(True) #To avoid the first row used to define the dimensions
     
 
 def minibatch(tens : Tensor, batch_size : int = 32, shuffle : bool = True) -> Tensor:

@@ -14,7 +14,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.manual_seed(0)
 
 #Dataset selection
-dataset = 'human'
+dataset = 'twitch'
 
 if dataset == 'coli':
     data = models.Data_Bio_Coli()
@@ -22,6 +22,8 @@ elif dataset == 'cora' or dataset == 'pubmed' or dataset == 'citeseer':
     data = models.Data_Papers(dataset)
 elif dataset == 'human':
     data = models.Data_Bio_Human()
+elif dataset == 'twitch':
+    data = models.Data_Twitch()
 else:
     raise ValueError(f'There not exist {dataset} dataset')    
 
@@ -35,7 +37,7 @@ autoencoder = models.VGAE(in_channels, hid_dim, emb_dim).to(device)
 
 start_vgae = time()
 print(f'{plots.Bcolors.HEADER}Training of the VGAE{plots.Bcolors.ENDC}')
-lossi_VGAE = autoencoder.train_cycle(data, epochs=500)#Training VGAE
+lossi_VGAE = autoencoder.train_cycle(data, epochs=100)#Training VGAE
 stop_vgae = time()
 
 #Data processing for the FNN
@@ -48,7 +50,7 @@ fnn = models.FNN(emb_dim*2).to(device)
 #Train
 start_fnn = time()
 print(f'{plots.Bcolors.HEADER}Training of the FNN{plots.Bcolors.ENDC}')
-lossi_fnn, lossi_test_fnn = fnn.train_cycle_fnn(data_fnn, epochs=20000)
+lossi_fnn, lossi_test_fnn = fnn.train_cycle_fnn(data_fnn, epochs=1000)
 stop_fnn = time()
 
 #Computational times
