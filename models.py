@@ -32,13 +32,18 @@ class Data_Papers():
     -------
     Data class.
     '''
-    def __init__(self):
+    def __init__(self, name : str):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
         
-        norm = pyg.transforms.NormalizeFeatures()
+        # norm = pyg.transforms.NormalizeFeatures()
         # dataset = Planetoid(root=data_dir, name='Cora', transform=norm) # Old (and may wrong) implementation of the normalization 
-        dataset = Planetoid(root=data_dir, name='Cora')
+        if name == 'cora':
+            dataset = Planetoid(root=data_dir, name='Cora')
+        elif name == 'pubmed':
+            dataset = Planetoid(root=data_dir, name='PubMed')
+        elif name == 'citeseer':
+            dataset = Planetoid(root=data_dir, name='CiteSeer')
         data = dataset[0].to(device)
         
         # self.x = data.x # Still the old normalization
@@ -53,7 +58,7 @@ class Data_Papers():
         self.val_neg = data.val_neg_edge_index
         self.test_pos = data.test_pos_edge_index
         self.test_neg = data.test_neg_edge_index
-        del self.all_index, norm, data, dataset
+        del self.all_index, data, dataset
         
     
 class Data_Bio_Coli():
@@ -61,9 +66,9 @@ class Data_Bio_Coli():
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
 
-        features = np.loadtxt(data_dir + '/Coli_features.txt', dtype=np.float32)
-        pos_edges = np.loadtxt(data_dir + '/Coli_PositiveEdges.txt', dtype=np.int64)
-        neg_edges = np.loadtxt(data_dir + '/Coli_NegativeEdges.txt', dtype=np.int64)
+        features = np.load(data_dir + '/Coli_features.npz')['Coli_features'].astype(np.float32)
+        pos_edges = np.loadtxt(data_dir + '/Coli_PositiveEdges.npz')['Coli_PositiveEdges'].astype(np.int64)
+        neg_edges = np.loadtxt(data_dir + '/Coli_NegativeEdges.npz')['Coli_NegativeEdges'].astype(np.int64)
 
         features = torch.from_numpy(features).to(device)
         self.x = column_norm(features)
@@ -96,9 +101,9 @@ class Data_Bio_Human():
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
 
-        features = np.loadtxt(data_dir + '/H_features.txt', dtype=np.float32)
-        pos_edges = np.loadtxt(data_dir + '/H_PositiveEdges.txt', dtype=np.int64)
-        neg_edges = np.loadtxt(data_dir + '/H_NegativeEdges.txt', dtype=np.int64)
+        features = np.load(data_dir + '/H_features.npz')['H_features'].astype(np.float32)
+        pos_edges = np.loadtxt(data_dir + '/H_PositiveEdges.npz')['H_PositiveEdges'].astype(np.int64)
+        neg_edges = np.loadtxt(data_dir + '/H_NegativeEdges.npz')['H_NegativeEdges'].astype(np.int64)
 
         features = torch.from_numpy(features).to(device)
         self.x = column_norm(features)
@@ -182,7 +187,7 @@ class VGAE(pyg.nn.VGAE):
         super().__init__(encoder=GCNEncoder(in_channels, hid_dim, emb_dim))
     
    
-    def train_step(self, data, optimizer) -> float:
+    def train_step(self, data, optimizer, include_neg : bool = True) -> float:
         '''
         Perform a single step of the training of the VGAE.
 
@@ -202,7 +207,10 @@ class VGAE(pyg.nn.VGAE):
         optimizer.zero_grad()
         norm = 1/data.x.shape[0]
         z = self.encode(data.x, data.train_pos)
-        loss = self.recon_loss(z, data.train_pos, data.train_neg) + self.kl_loss()*norm
+        if include_neg:
+            loss = self.recon_loss(z, data.train_pos, data.train_neg) + self.kl_loss()*norm
+        elif not include_neg:
+            loss = self.recon_loss(z, data.train_pos) + self.kl_loss()*norm
         loss.backward()
         optimizer.step()
         return float(loss)
@@ -229,7 +237,7 @@ class VGAE(pyg.nn.VGAE):
         pass
  
     
-    def train_cycle(self, data , epochs : int = 1000, optimizer = None) -> list:
+    def train_cycle(self, data , epochs : int = 1000, optimizer = None, include_neg : bool = True) -> list:
         '''
         Perform a cycle of training using the train_step function.
 
@@ -252,7 +260,7 @@ class VGAE(pyg.nn.VGAE):
         if optimizer is None:
             optimizer = torch.optim.Adam(self.parameters(),lr=1e-2)
         for i in range(epochs):
-            lossi.append(self.train_step(data, optimizer=optimizer))
+            lossi.append(self.train_step(data, optimizer=optimizer, include_neg=include_neg))
             if i%(epochs/20) == 0:
                 print(f'{i/epochs*100:.2f}% | loss = {lossi[i]:.4f} -> ', end = '')
                 self.test_step(data)
@@ -328,7 +336,7 @@ class  FNN(nn.Module):
                 lossi_test.append(self.test_fnn(data.test_emb_pos, data.test_emb_neg))
                 print(f'{i/epochs * 100:.2f}% -> Train loss: {lossi[-1]:.3f} | Test loss: {lossi_test[-1]:.3f}')
         lossi_test.append(self.test_fnn(data.test_emb_pos, data.test_emb_neg))
-        print(f'100.00% -> Train loss: {lossi[-1]:.3f} | Test loss: {lossi_test[-1]:.3f}')
+        print(f'100.00% -> Train loss: {lossi[-1]:.4f} | Test loss: {lossi_test[-1]:.4f}')
         return lossi, lossi_test
     
 

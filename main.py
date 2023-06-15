@@ -18,8 +18,8 @@ dataset = 'human'
 
 if dataset == 'coli':
     data = models.Data_Bio_Coli()
-elif dataset == 'cora':
-    data = models.Data_Papers()
+elif dataset == 'cora' or dataset == 'pubmed' or dataset == 'citeseer':
+    data = models.Data_Papers(dataset)
 elif dataset == 'human':
     data = models.Data_Bio_Human()
 else:
@@ -35,7 +35,7 @@ autoencoder = models.VGAE(in_channels, hid_dim, emb_dim).to(device)
 
 start_vgae = time()
 print(f'{plots.Bcolors.HEADER}Training of the VGAE{plots.Bcolors.ENDC}')
-lossi_VGAE = autoencoder.train_cycle(data, epochs=2000)#Training VGAE
+lossi_VGAE = autoencoder.train_cycle(data, epochs=500)#Training VGAE
 stop_vgae = time()
 
 #Data processing for the FNN
