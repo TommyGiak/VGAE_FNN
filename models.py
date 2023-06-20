@@ -7,12 +7,12 @@ Created on Thu Jun  1 20:21:48 2023
 import torch
 from torch import Tensor
 import torch_geometric as pyg
-from torch_geometric.datasets import Planetoid, Twitch
+from torch_geometric.datasets import Planetoid, Twitch, FakeDataset
 from torch import nn
 from torch_geometric.utils import negative_sampling, train_test_split_edges
-from plots import Bcolors
 import os
 import numpy as np
+import utils
 
 EPS = 1e-15
 
@@ -47,7 +47,7 @@ class Data_Papers():
         data = dataset[0].to(device)
         
         # self.x = data.x # Still the old normalization
-        self.x = column_norm(data.x)
+        self.x = utils.column_norm(data.x)
         self.all_index = data.edge_index
         data = train_test_split_edges(data, 0.05, 0.1)
         self.train_pos = data.train_pos_edge_index
@@ -72,7 +72,28 @@ class Data_Twitch():
         data = dataset[0].to(device)
                 
         # self.x = data.x # Still the old normalization
-        self.x = column_norm(data.x)
+        self.x = utils.column_norm(data.x)
+        self.all_index = data.edge_index
+        data = train_test_split_edges(data, 0.05, 0.1)
+        self.train_pos = data.train_pos_edge_index
+        self.train_neg = negative_sampling(self.all_index,
+                                           num_nodes= data.x.shape[0], 
+                                           num_neg_samples=self.train_pos.shape[1])
+        self.val_pos = data.val_pos_edge_index
+        self.val_neg = data.val_neg_edge_index
+        self.test_pos = data.test_pos_edge_index
+        self.test_neg = data.test_neg_edge_index
+        del self.all_index, data, dataset
+
+
+class Data_Fake():
+    def __init__(self):
+        
+        pyg.seed_everything(100)
+        dataset = FakeDataset(avg_num_nodes=4000, avg_degree=4, num_channels=300)
+        data = dataset[0].to(device)
+                
+        self.x = utils.column_norm(data.x)
         self.all_index = data.edge_index
         data = train_test_split_edges(data, 0.05, 0.1)
         self.train_pos = data.train_pos_edge_index
@@ -90,13 +111,12 @@ class Data_Bio_Coli():
     def __init__(self):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
-        breakpoint()
         features = np.load(data_dir + '/Coli_features.npz')['Coli_features'].astype(np.float32)
         pos_edges = np.load(data_dir + '/Coli_PositiveEdges.npz')['Coli_PositiveEdges'].astype(np.int64)
         neg_edges = np.load(data_dir + '/Coli_NegativeEdges.npz')['Coli_NegativeEdges'].astype(np.int64)
 
         features = torch.from_numpy(features).to(device)
-        self.x = column_norm(features)
+        self.x = utils.column_norm(features)
         # soft = torch.nn.Softmax(dim = 1) # Old (and may wrong) implementation of the normalization
         # self.x = soft(features)
         # del soft
@@ -130,7 +150,7 @@ class Data_Bio_Human():
         neg_edges = np.load(data_dir + '/H_NegativeEdges.npz')['H_NegativeEdges'].astype(np.int64)
 
         features = torch.from_numpy(features).to(device)
-        self.x = column_norm(features)
+        self.x = utils.column_norm(features)
         # soft = torch.nn.Softmax(dim = 1) # Old (and may wrong) implementation of the normalization
         # self.x = soft(features)
         # del soft
@@ -156,10 +176,10 @@ class Data_Bio_Human():
         
 class Data_FNN():
     def __init__(self, embedding, data):
-        self.train_emb_pos = get_fnn_input(embedding, data.train_pos)
-        self.train_emb_neg = get_fnn_input(embedding, data.train_neg)
-        self.test_emb_pos = get_fnn_input(embedding, data.test_pos)
-        self.test_emb_neg = get_fnn_input(embedding, data.test_neg)
+        self.train_emb_pos = utils.get_fnn_input(embedding, data.train_pos)
+        self.train_emb_neg = utils.get_fnn_input(embedding, data.train_neg)
+        self.test_emb_pos = utils.get_fnn_input(embedding, data.test_pos)
+        self.test_emb_neg = utils.get_fnn_input(embedding, data.test_neg)
         
         
 
@@ -183,13 +203,12 @@ class GCNEncoder(nn.Module):
         super().__init__()
         self.conv = pyg.nn.GCNConv(in_channels, hid_dim, cached=True) #cached -> True for storing the computation of the normalized adj matrix
         self.mu = pyg.nn.GCNConv(hid_dim, emb_dim, cached=True)
-        self.logvar = pyg.nn.GCNConv(hid_dim, emb_dim, cached=True)
+        self.logstd = pyg.nn.GCNConv(hid_dim, emb_dim, cached=True)
         
         
     def forward(self, x : Tensor, edges : Tensor):
         x = self.conv(x,edges).relu()
-        return self.mu(x,edges), self.logvar(x,edges)
-    
+        return self.mu(x,edges), self.logstd(x,edges)
     
     
 class VGAE(pyg.nn.VGAE):
@@ -282,7 +301,7 @@ class VGAE(pyg.nn.VGAE):
         '''
         lossi = []
         if optimizer is None:
-            optimizer = torch.optim.Adam(self.parameters(),lr=1e-2)
+            optimizer = torch.optim.Adam(self.parameters(),lr=1e-3)
         for i in range(epochs):
             lossi.append(self.train_step(data, optimizer=optimizer, include_neg=include_neg))
             if i%(epochs/20) == 0:
@@ -361,127 +380,7 @@ class  FNN(nn.Module):
                 print(f'{i/epochs * 100:.2f}% -> Train loss: {lossi[-1]:.3f} | Test loss: {lossi_test[-1]:.3f}')
         lossi_test.append(self.test_fnn(data.test_emb_pos, data.test_emb_neg))
         print(f'100.00% -> Train loss: {lossi[-1]:.4f} | Test loss: {lossi_test[-1]:.4f}')
-        return lossi, lossi_test
-    
-
-def get_fnn_input(embedding : Tensor, links : Tensor) -> Tensor:
-    '''
-    Generate the input for the FNN.
-
-    Parameters
-    ----------
-    embedding : Tensor
-        The embedding of the VGAE of dimension NxD, where N is the number of nodes and D the embedding dimension.
-    links : Tensor (Sparse)
-        Adjacency sparse matrix of the links to transform of dimension 2xL.
-
-    Returns
-    -------
-    Tensor
-        Inputs for the FNN of dimension Lx2D.
-
-    '''
-    col1 = torch.squeeze(embedding[links.T[:,0:1]])
-    col2 = torch.squeeze(embedding[links.T[:,1:2]])
-    x = torch.hstack((col1,col2))
-    return x.requires_grad_(True) #To avoid the first row used to define the dimensions
-    
-
-def minibatch(tens : Tensor, batch_size : int = 32, shuffle : bool = True) -> Tensor:
-    '''
-    Transform the tensor in a iterable tensor divided in batch_size's tensors.
-    WRANING : if the number of rows of tens is not a multiple of batch_size, a part of the samples will be wasted.
-
-    Parameters
-    ----------
-    tens : Tensor
-        Tensor of dimension *x2D to be dividen in batches.
-    batch_size : int, optional
-        The default is 32.
-    shuffle : bool, optional
-        Shuffle the row of the input tensor. The default is True.
-
-    Returns
-    -------
-    tens : Tensor
-        tensor of size: batches x batch_size x 2D.
-
-    '''
-    if shuffle:
-        ind = torch.randperm(tens.shape[0])
-        tens = tens[ind]
-        batches = tens.shape[0]//batch_size
-    if tens.shape[0]%batch_size == 0:
-        tens = tens.view(batches, batch_size, tens.shape[1])
-    else:
-        print(f'{Bcolors.WARNING}WARNING : {Bcolors.ENDC} since the number of ', end='')
-        print(f'training sample {tens.shape[0]} is not a multiple of {batch_size}, ', end='')
-        print(f'{tens.shape[0]%batch_size} random samples will be wasted.')
-        tens = tens[:batches*batch_size]
-        tens = tens.view(batches, batch_size, tens.shape[1])
-    return tens
-
-
-def get_argmax_VGAE(model, data):
-    tp = 0
-    fp = 0
-    model.eval()
-    with torch.no_grad():
-        z = model.encode(data.x, data.train_pos)
-        pos_out = model.decode(z, data.test_pos)
-        pos_out = pos_out.cpu().numpy()
-        neg_out = model.decode(z, data.test_neg)
-        neg_out = neg_out.cpu().numpy()
-    for p in pos_out:
-        if p > 0.5:
-            tp += 1
-    for p in neg_out:
-        if p > 0.5:
-            fp += 1
-    tn = len(neg_out) - fp
-    fn = len(pos_out) - tp
-    assert tp + fn == len(pos_out)
-    assert fp + tn == len(neg_out)
-    accuracy = (tp+tn)/(tp+tn+fp+fn)
-    sensitivity = tp/(tp+fn)
-    specificity = tn/(tn+fp)
-    precision = tp/(tp+fp)
-    fscore = 2*precision*sensitivity/(precision+sensitivity)            
-    return accuracy, sensitivity, specificity, precision, fscore
-
-
-def get_argmax_FNN(model, data):
-    model.eval()
-    with torch.no_grad():
-        h_pos = torch.nn.functional.softmax(model(data.test_emb_pos), dim = 1)
-        h_neg = torch.nn.functional.softmax(model(data.test_emb_neg), dim = 1)
-        h_pos = torch.argmax(h_pos, dim = 1)
-        h_neg = torch.argmax(h_neg, dim = 1)
-        h_pos = h_pos.detach().cpu().numpy()
-        h_neg = h_neg.detach().cpu().numpy()
-    tp = np.sum(h_pos)
-    fp = np.sum(h_neg)
-    tn = len(h_neg) - fp
-    fn = len(h_pos) - tp
-    assert tp + fn == len(h_pos)
-    assert fp + tn == len(h_neg)
-    accuracy = (tp+tn)/(tp+tn+fp+fn)
-    sensitivity = tp/(tp+fn)
-    specificity = tn/(tn+fp)
-    precision = tp/(tp+fp)
-    fscore = 2*precision*sensitivity/(precision+sensitivity)            
-    return accuracy, sensitivity, specificity, precision, fscore
-    
-        
-def column_norm(data : Tensor) -> Tensor:
-    mean = torch.mean(data, 0)
-    var = torch.var(data, dim=0)
-    std = torch.sqrt(var)
-    normal = (data - mean)/(std+EPS)
-    return normal/torch.max(normal)
-    
-    
-    
+        return lossi, lossi_test    
     
     
         

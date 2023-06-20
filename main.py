@@ -7,6 +7,7 @@ Created on Tue Jun  6 10:39:16 2023
 from time import time
 import torch
 import models
+import utils
 import plots
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -14,7 +15,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 torch.manual_seed(0)
 
 #Dataset selection
-dataset = 'twitch'
+dataset = 'coli'
 
 if dataset == 'coli':
     data = models.Data_Bio_Coli()
@@ -24,9 +25,10 @@ elif dataset == 'human':
     data = models.Data_Bio_Human()
 elif dataset == 'twitch':
     data = models.Data_Twitch()
+elif dataset == 'fake':
+    data = models.Data_Fake()
 else:
     raise ValueError(f'There not exist {dataset} dataset')    
-
 
 #VGAE
 in_channels = data.x.shape[1]
@@ -37,7 +39,7 @@ autoencoder = models.VGAE(in_channels, hid_dim, emb_dim).to(device)
 
 start_vgae = time()
 print(f'{plots.Bcolors.HEADER}Training of the VGAE{plots.Bcolors.ENDC}')
-lossi_VGAE = autoencoder.train_cycle(data, epochs=100)#Training VGAE
+lossi_VGAE = autoencoder.train_cycle(data, epochs=500)#Training VGAE
 stop_vgae = time()
 
 #Data processing for the FNN
@@ -50,7 +52,7 @@ fnn = models.FNN(emb_dim*2).to(device)
 #Train
 start_fnn = time()
 print(f'{plots.Bcolors.HEADER}Training of the FNN{plots.Bcolors.ENDC}')
-lossi_fnn, lossi_test_fnn = fnn.train_cycle_fnn(data_fnn, epochs=1000)
+lossi_fnn, lossi_test_fnn = fnn.train_cycle_fnn(data_fnn, epochs=10000)
 stop_fnn = time()
 
 #Computational times
@@ -71,11 +73,11 @@ plots.plot_distribution_FNN(fnn, embedding, data_fnn, test = False)
 plots.plot_distribution_FNN(fnn, embedding, data_fnn, test = True)
 
 #Results
-vgae_results = models.get_argmax_VGAE(autoencoder, data)
-fnn_results = models.get_argmax_FNN(fnn, data_fnn)
+vgae_results = utils.get_argmax_VGAE(autoencoder, data)
+fnn_results = utils.get_argmax_FNN(fnn, data_fnn)
 
-print(vgae_results)
-print(fnn_results)
+utils.print_dict(vgae_results, part = 'VGAE results in the classification')
+utils.print_dict(fnn_results, part = 'FNN result in the classification')
 
 
 

@@ -82,7 +82,7 @@ def plot_train_distribution_VGAE(model, data) -> None:
         neg_out = neg_out.cpu().numpy()
     fig, (ax1,ax2) = plt.subplots(1,2, figsize = (9,4))
     fig.suptitle('VGAE distributions')
-    ax1.hist(pos_out, bins = 30, label = f'{data.test_pos.shape[1]} total edges')
+    ax1.hist(pos_out, bins = 30, label = f'{data.train_pos.shape[1]} total edges')
     ax1.legend()
     ax1.set_xlabel('Probability of link')
     ax1.set_ylabel('Number of edges')
