@@ -16,20 +16,22 @@ torch.manual_seed(0)
 
 #Dataset selection
 dataset = 'coli'
+order = 4
 
 if dataset == 'coli':
-    data = models.Data_Bio_Coli()
+    data = models.Data_Bio_Coli(order=order)
 elif dataset == 'cora' or dataset == 'pubmed' or dataset == 'citeseer':
-    data = models.Data_Papers(dataset)
+    data = models.Data_Papers(dataset, order=order)
 elif dataset == 'human':
-    data = models.Data_Bio_Human()
+    data = models.Data_Bio_Human(order=order)
 elif dataset == 'twitch':
-    data = models.Data_Twitch()
+    data = models.Data_Twitch(order=order)
 elif dataset == 'fake':
-    data = models.Data_Fake()
+    data = models.Data_Fake(order=order)
 else:
     raise ValueError(f'There not exist {dataset} dataset')    
 
+#%%
 #VGAE
 in_channels = data.x.shape[1]
 hid_dim = 100
@@ -39,7 +41,7 @@ autoencoder = models.VGAE(in_channels, hid_dim, emb_dim).to(device)
 
 start_vgae = time()
 print(f'{plots.Bcolors.HEADER}Training of the VGAE{plots.Bcolors.ENDC}')
-lossi_VGAE = autoencoder.train_cycle(data, epochs=500)#Training VGAE
+lossi_VGAE = autoencoder.train_cycle(data, weights=True, epochs=5000, include_neg=True)#Training VGAE
 stop_vgae = time()
 
 #Data processing for the FNN
@@ -52,7 +54,7 @@ fnn = models.FNN(emb_dim*2).to(device)
 #Train
 start_fnn = time()
 print(f'{plots.Bcolors.HEADER}Training of the FNN{plots.Bcolors.ENDC}')
-lossi_fnn, lossi_test_fnn = fnn.train_cycle_fnn(data_fnn, epochs=10000)
+lossi_fnn, lossi_test_fnn = fnn.train_cycle_fnn(data_fnn, epochs=20000)
 stop_fnn = time()
 
 #Computational times
@@ -67,7 +69,7 @@ plots.plot_train_distribution_VGAE(autoencoder, data)
 plots.plot_test_distribution_VGAE(autoencoder, data)
 
 #FNN
-plots.plot_loss(lossi_fnn, tit = 'Loss of the FNN', mean = 100)
+plots.plot_loss(lossi_fnn, tit = 'Loss of the FNN', mean = 500)
 
 plots.plot_distribution_FNN(fnn, embedding, data_fnn, test = False)
 plots.plot_distribution_FNN(fnn, embedding, data_fnn, test = True)

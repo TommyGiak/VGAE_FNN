@@ -6,9 +6,13 @@ Created on Tue Jun 20 18:12:49 2023
 """
 
 import torch
+import torch_geometric as pyg
 from torch import Tensor
 import numpy as np
 from plots import Bcolors
+from torch_sparse import spspmm, coalesce
+import matplotlib.pyplot as plt
+
 
 
 EPS = 1e-15
@@ -141,3 +145,74 @@ def print_dict(dictionary : dict, part = None) -> None:
     for e in dictionary:
         print(f'{e}: {dictionary[e]:.5f}')
     pass
+
+
+def adj_with_neighbors(adj : Tensor, mat_dim : int, order : int, plot : bool = True):
+    values = torch.ones_like(adj[0],requires_grad=False).float()
+    adj.requires_grad_(False)
+    
+    n_pow, val_pow = adj, values
+    n_neig = [n_pow.shape[1]]
+    i=0
+    
+    tot_adj = adj.clone()
+    tot_val = values.clone()
+    
+    for i in range(order-1):
+        n_pow, val_pow = spspmm(n_pow, val_pow, adj, values, mat_dim, mat_dim, mat_dim)
+        n_neig.append(n_pow.shape[1])
+        n_pow, val_pow = pyg.utils.remove_self_loops(n_pow,val_pow)
+        
+        # transform_val = (val_pow+1).clone().log10() # old implementation
+        # transform_val = torch.pow(0.8*transform_val/torch.max(transform_val), i+2)
+        mean = val_pow.mean()
+        std = val_pow.std()
+        transform_val = (val_pow.clone()-mean)/std
+        transform_val = torch.sigmoid(transform_val)
+        transform_val = torch.pow(transform_val, i+1)
+        # transform_val = transform_val/(i+1)
+
+        tot_adj = torch.hstack((tot_adj,n_pow))
+        tot_val = torch.hstack((tot_val,transform_val))
+        if len(val_pow) == 0:
+            break        
+                
+    if plot:
+        exp = list(range(i+2))
+        exp = [i+1 for i in exp]
+        fig, ax = plt.subplots()
+        ax.bar(exp, n_neig)
+        ax.set_title('Total number of link for order of the adj matrix')
+        ax.set_xlabel('adj matrix order')
+        ax.set_ylabel('Number of links')
+        plt.show()
+        
+    tot_adj, tot_val = coalesce(tot_adj, tot_val, mat_dim, mat_dim)
+    
+
+    return tot_adj, tot_val
+
+def reconstruct_graph(data, data_fnn, model):
+    model.eval()
+    with torch.no_grad():
+        out_pos = model(data_fnn.test_emb_pos)
+        out_neg = model(data_fnn.test_emb_neg)
+        links = data.train_pos.clone()
+        
+    for i, out in enumerate(out_pos):
+        if torch.argmax(out) == 1:
+            links = torch.hstack((links,data.test_pos[:,i:i+1]))
+    for i, out in enumerate(out_neg):
+        if torch.argmax(out) == 1:
+            links = torch.hstack((links,data.test_neg[:,i:i+1]))            
+    return links
+                    
+    
+    
+    
+    
+    
+    
+    
+    
+    

@@ -19,6 +19,36 @@ EPS = 1e-15
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
+class Data_Venice():
+    def __init__(self, data, order = 1):
+        
+        # self.x = data.x # Still the old normalization
+        self.x = utils.column_norm(data.x)
+        self.all_index = data.edge_index
+        
+        pos_edges = data.edge_index.clone().to(device)
+        neg_edges = negative_sampling(self.all_index,
+                                           num_nodes= data.x.shape[0], 
+                                           num_neg_samples=pos_edges.shape[1])
+
+        idx_pos = torch.randperm(pos_edges.t().shape[0])
+        idx_neg = torch.randperm(neg_edges.t().shape[0])
+        pos_edges = pos_edges.t()[idx_pos].t()
+        neg_edges = neg_edges.t()[idx_neg].t()
+
+        ind_pos = int(pos_edges.shape[1]*0.8)
+        ind_neg = int(neg_edges.shape[1]*0.8)
+
+        self.train_pos = pos_edges[:,:ind_pos]
+        self.train_neg = neg_edges[:,:ind_neg]
+        self.test_pos = pos_edges[:,ind_pos:]
+        self.test_neg = neg_edges[:,ind_neg:]
+        
+        dim = self.x.shape[0]
+        self.tot_train_pos, self.weights = utils.adj_with_neighbors(self.train_pos, dim, order)
+        del self.all_index
+
+
 class Data_Papers():
     '''
     Class to group the data in a more intuitive way.
@@ -32,7 +62,7 @@ class Data_Papers():
     -------
     Data class.
     '''
-    def __init__(self, name : str):
+    def __init__(self, name : str, order : int = 1):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
         
@@ -58,11 +88,13 @@ class Data_Papers():
         self.val_neg = data.val_neg_edge_index
         self.test_pos = data.test_pos_edge_index
         self.test_neg = data.test_neg_edge_index
+        dim = self.x.shape[0]
+        self.tot_train_pos, self.weights = utils.adj_with_neighbors(self.train_pos, dim, order)
         del self.all_index, data, dataset
         
 
 class Data_Twitch():
-    def __init__(self, name : str = 'ES'):
+    def __init__(self, name : str = 'ES', order : int = 1):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
         
@@ -83,11 +115,13 @@ class Data_Twitch():
         self.val_neg = data.val_neg_edge_index
         self.test_pos = data.test_pos_edge_index
         self.test_neg = data.test_neg_edge_index
+        dim = self.x.shape[0]
+        self.tot_train_pos, self.weights = utils.adj_with_neighbors(self.train_pos, dim, order)
         del self.all_index, data, dataset
 
 
 class Data_Fake():
-    def __init__(self):
+    def __init__(self, order : int = 1):
         
         pyg.seed_everything(100)
         dataset = FakeDataset(avg_num_nodes=4000, avg_degree=4, num_channels=300)
@@ -104,11 +138,13 @@ class Data_Fake():
         self.val_neg = data.val_neg_edge_index
         self.test_pos = data.test_pos_edge_index
         self.test_neg = data.test_neg_edge_index
+        dim = self.x.shape[0]
+        self.tot_train_pos, self.weights = utils.adj_with_neighbors(self.train_pos, dim, order)
         del self.all_index, data, dataset
         
     
 class Data_Bio_Coli():
-    def __init__(self):
+    def __init__(self, order : int = 1):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
         features = np.load(data_dir + '/Coli_features.npz')['Coli_features'].astype(np.float32)
@@ -121,7 +157,6 @@ class Data_Bio_Coli():
         # self.x = soft(features)
         # del soft
         del features
-
         
         pos_edges = torch.from_numpy(pos_edges).to(device)
         neg_edges = torch.from_numpy(neg_edges).to(device)
@@ -138,11 +173,13 @@ class Data_Bio_Coli():
         self.train_neg = neg_edges[:,:ind_neg]
         self.test_pos = pos_edges[:,ind_pos:]
         self.test_neg = neg_edges[:,ind_neg:]
+        dim = self.x.shape[0]
+        self.tot_train_pos, self.weights = utils.adj_with_neighbors(self.train_pos, dim, order)
         del pos_edges, neg_edges, idx_pos, idx_neg, ind_pos, ind_neg
         
         
 class Data_Bio_Human():
-    def __init__(self):
+    def __init__(self, order : int = 1):
         current_dir = os.path.dirname(os.path.realpath(__file__))
         data_dir = current_dir + '/data'
         features = np.load(data_dir + '/H_features.npz')['features'].astype(np.float32)
@@ -171,6 +208,8 @@ class Data_Bio_Human():
         self.train_neg = neg_edges[:,:ind_neg]
         self.test_pos = pos_edges[:,ind_pos:]
         self.test_neg = neg_edges[:,ind_neg:]
+        dim = self.x.shape[0]
+        self.tot_train_pos, self.weights = utils.adj_with_neighbors(self.train_pos, dim, order)
         del pos_edges, neg_edges, idx_pos, idx_neg, ind_pos, ind_neg
         
         
@@ -206,9 +245,13 @@ class GCNEncoder(nn.Module):
         self.logstd = pyg.nn.GCNConv(hid_dim, emb_dim, cached=True)
         
         
-    def forward(self, x : Tensor, edges : Tensor):
-        x = self.conv(x,edges).relu()
-        return self.mu(x,edges), self.logstd(x,edges)
+    def forward(self, x : Tensor, edges : Tensor, weights : Tensor = None):
+        if weights is None:
+            x = self.conv(x,edges).relu()
+            return self.mu(x,edges), self.logstd(x,edges)
+        else:
+            x = self.conv(x,edges,weights).relu()
+            return self.mu(x,edges,weights), self.logstd(x,edges,weights)
     
     
 class VGAE(pyg.nn.VGAE):
@@ -228,9 +271,32 @@ class VGAE(pyg.nn.VGAE):
     '''
     def __init__(self, in_channels, hid_dim, emb_dim):
         super().__init__(encoder=GCNEncoder(in_channels, hid_dim, emb_dim))
+        
+        
+    def recon_loss(self, z: Tensor, pos_edge_index: Tensor,
+                   neg_edge_index: Tensor = None, weights: Tensor = None) -> Tensor:
+        
+        if weights is None:
+            pos_loss = -torch.log(
+                        self.decoder(z, pos_edge_index, sigmoid=True) + EPS).mean()
+            if neg_edge_index is None:
+                neg_edge_index = negative_sampling(pos_edge_index, z.size(0))
+            neg_loss = -torch.log(1 -
+                              self.decoder(z, neg_edge_index, sigmoid=True) +
+                              EPS).mean()
+        else:
+            decoded = self.decoder(z, pos_edge_index, sigmoid=False)
+            pos_loss = torch.abs(decoded-weights).mean()    
+            if neg_edge_index is None:
+                neg_edge_index = negative_sampling(pos_edge_index, z.size(0))    
+            decoded = self.decoder(z, neg_edge_index, sigmoid=False)
+            w = torch.ones_like(decoded)
+            neg_loss = torch.abs(decoded+w).mean()
+        
+        return pos_loss + neg_loss
     
    
-    def train_step(self, data, optimizer, include_neg : bool = True) -> float:
+    def train_step(self, data, optimizer, weights : bool, include_neg : bool = True) -> float:
         '''
         Perform a single step of the training of the VGAE.
 
@@ -249,11 +315,18 @@ class VGAE(pyg.nn.VGAE):
         self.train()
         optimizer.zero_grad()
         norm = 1/data.x.shape[0]
-        z = self.encode(data.x, data.train_pos)
-        if include_neg:
-            loss = self.recon_loss(z, data.train_pos, data.train_neg) + self.kl_loss()*norm
-        elif not include_neg:
-            loss = self.recon_loss(z, data.train_pos) + self.kl_loss()*norm
+        if not weights:
+            z = self.encode(data.x, data.train_pos)
+            if include_neg:
+                loss = self.recon_loss(z, data.train_pos, data.train_neg) + self.kl_loss()*norm
+            elif not include_neg:
+                loss = self.recon_loss(z, data.train_pos) + self.kl_loss()*norm
+        elif weights:
+            z = self.encode(data.x, data.train_pos)
+            if include_neg:
+                loss = self.recon_loss(z, data.tot_train_pos, data.train_neg, weights= data.weights) + self.kl_loss()*norm
+            elif not include_neg:
+                loss = self.recon_loss(z, data.tot_train_pos, weights=data.weights) + self.kl_loss()*norm
         loss.backward()
         optimizer.step()
         return float(loss)
@@ -280,7 +353,7 @@ class VGAE(pyg.nn.VGAE):
         pass
  
     
-    def train_cycle(self, data , epochs : int = 1000, optimizer = None, include_neg : bool = True) -> list:
+    def train_cycle(self, data, weights : bool, epochs : int = 1000, optimizer = None, include_neg : bool = True) -> list:
         '''
         Perform a cycle of training using the train_step function.
 
@@ -303,7 +376,7 @@ class VGAE(pyg.nn.VGAE):
         if optimizer is None:
             optimizer = torch.optim.Adam(self.parameters(),lr=1e-3)
         for i in range(epochs):
-            lossi.append(self.train_step(data, optimizer=optimizer, include_neg=include_neg))
+            lossi.append(self.train_step(data, weights=weights, optimizer=optimizer, include_neg=include_neg))
             if i%(epochs/20) == 0:
                 print(f'{i/epochs*100:.2f}% | loss = {lossi[i]:.4f} -> ', end = '')
                 self.test_step(data)
@@ -375,9 +448,9 @@ class  FNN(nn.Module):
             lossi.append(self.train_fnn(data.train_emb_pos[index_pos[i]:index_pos[i]+batch_size], 
                                         data.train_emb_neg[index_neg[i]:index_neg[i]+batch_size], 
                                         optim, loss_fn))
-            if i%(epochs/50) == 0:
+            if i%(epochs/20) == 0:
                 lossi_test.append(self.test_fnn(data.test_emb_pos, data.test_emb_neg))
-                print(f'{i/epochs * 100:.2f}% -> Train loss: {lossi[-1]:.3f} | Test loss: {lossi_test[-1]:.3f}')
+                print(f'{i/epochs * 100:.2f}% -> Train loss: {lossi[-1]:.4f} | Test loss: {lossi_test[-1]:.4f}')
         lossi_test.append(self.test_fnn(data.test_emb_pos, data.test_emb_neg))
         print(f'100.00% -> Train loss: {lossi[-1]:.4f} | Test loss: {lossi_test[-1]:.4f}')
         return lossi, lossi_test    
